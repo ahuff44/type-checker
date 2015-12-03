@@ -1,0 +1,238 @@
+#lang plai
+(print-only-errors #t)
+
+;---------------------------------------
+; data definitions
+;---------------------------------------
+
+(define-type Expr
+  [num (n number?)]
+  [id (v symbol?)]
+  [bool (b boolean?)]
+  [bin-num-op (op procedure?) (lhs Expr?) (rhs Expr?)]
+  [iszero (e Expr?)]
+  [bif (test Expr?) (then Expr?) (else Expr?)]
+  [with (bound-id symbol?) (bound-body Expr?) (body Expr?)]
+  [fun (arg-id symbol?)
+       (arg-type Type?) (result-type Type?)
+       (body Expr?)]
+  [app (fun-expr Expr?) (arg-expr Expr?)]
+  [nempty]
+  [ncons (first Expr?) (rest Expr?)]
+  [nfirst (e Expr?)]
+  [nrest (e Expr?)]
+  [isnempty (e Expr?)])
+
+(define-type Type
+  [t-num]
+  [t-bool]
+  [t-nlist]
+  [t-fun (arg Type?) (result Type?)])
+
+;---------------------------------------
+; helper functions
+;---------------------------------------
+
+;---------------------------------------
+; main functions
+;---------------------------------------
+
+; parse-type : s-expression -> Type
+; Converts the given s-expression into a Type
+;   by parsing it according to this grammar:
+;   type ::=       number
+;          |       boolean
+;          |       nlist
+;          |       (type -> type)
+(define (parse-type s-exp)
+  (match s-exp
+    ['number
+      (t-num)]
+    ['boolean
+      (t-bool)]
+    ['nlist
+      (t-nlist)]
+    [(list type_a '-> type_b)
+      (t-fun (parse-type type_a)
+             (parse-type type_b))]
+    [_
+      (error 'parse-type "Syntax Error: Invalid Type declaration")]))
+
+  ; tests
+    (test (parse-type 'number) (t-num))
+    (test (parse-type 'boolean) (t-bool))
+    (test (parse-type 'nlist) (t-nlist))
+    (test (parse-type '{number -> boolean}) (t-fun (t-num) (t-bool)))
+    (test (parse-type '{{number -> number} -> {boolean -> nlist}})
+          (t-fun (t-fun (t-num) (t-num)) (t-fun (t-bool) (t-nlist))))
+
+; parse : s-expression -> Expr
+; Converts the given s-expression into a Expr
+;   by parsing it according to this grammar:
+;   expr ::=       num
+;          |       true
+;          |       false
+;          |       (+ expr expr)
+;          |       (- expr expr)
+;          |       (* expr expr)
+;          |       (iszero expr)
+;          |       (bif expr expr expr)
+;          |       id
+;          |       (with (id expr) expr)
+;          |       (fun (id : type) : type expr)
+;          |       (expr expr)
+;          |       nempty
+;          |       (ncons expr expr)
+;          |       (nempty? expr)
+;          |       (nfirst expr)
+;          |       (nrest expr)
+;
+;   type ::=       number
+;          |       boolean
+;          |       nlist
+;          |       (type -> type)
+; where num is a Racket number and id is an identifier not otherwise mentioned in the grammar.
+(define (parse s-exp)
+  (match s-exp
+
+    ; |   num
+    [(? number? s-exp)
+      (num s-exp)]
+
+    ; |   true
+    ['true
+      (bool true)]
+
+    ; |   false
+    ['false
+      (bool false)]
+
+    ; |   (+ expr expr)
+    [(list '+ lhs rhs)
+      (bin-num-op +
+                  (parse lhs)
+                  (parse rhs))]
+
+    ; |   (- expr expr)
+    [(list '- lhs rhs)
+      (bin-num-op -
+                  (parse lhs)
+                  (parse rhs))]
+
+    ; |   (* expr expr)
+    [(list '* lhs rhs)
+      (bin-num-op *
+                  (parse lhs)
+                  (parse rhs))]
+
+    ; |   (iszero expr)
+    [(list 'iszero expr)
+      (iszero (parse expr))]
+
+    ; |   (bif expr expr expr)
+    [(list 'bif pred true-branch false-branch)
+      (bif (parse pred)
+           (parse true-branch)
+           (parse false-branch))]
+    [(list-rest 'bif rst)
+     (error 'try-parse-bif "Syntax Error")]
+
+    ; |   with
+    [(list 'with (list bound-id bound-expr) body)
+      (with bound-id
+            (parse bound-expr)
+            (parse body))]
+    [(list-rest 'with rst)
+     (error 'parse "Syntax Error")]
+
+    ; |   (fun (id : type) : type expr)
+    [(list 'fun (list param-id ': param-type) ': result-type body)
+      (fun param-id
+           (parse-type param-type)
+           (parse-type result-type)
+           (parse body))]
+    [(list-rest 'fun rst)
+     (error 'try-parse-fun "Syntax Error")]
+
+    ; |   nempty
+    ['nempty
+      (nempty)]
+
+    ; |   (ncons expr expr)
+    [(list 'ncons fst rst)
+      (ncons (parse fst)
+             (parse rst))]
+
+    ; |   (nempty? expr)
+    [(list 'nempty? expr)
+      (isnempty (parse expr))]
+
+    ; |   (nfirst expr)
+    [(list 'nfirst expr)
+      (nfirst (parse expr))]
+
+    ; |   (nrest expr)
+    [(list 'nrest expr)
+      (nrest (parse expr))]
+
+    ; |   id
+    ; NOTE: order matters here;
+    ;   if this is earlier we might accidentally catch reserved constants (i.e., nempty, true, and false)
+    [(? symbol? s-exp)
+      (id s-exp)]
+
+    ; |   (expr expr)
+    ; NOTE: order matters here;
+    ;   if this is earlier we might accidentally catch 2-length constructs (i.e., nempty?, nfirst, and nrest)
+    [(list func-expr arg-expr)
+      (app (parse func-expr)
+           (parse arg-expr))]
+
+    [_
+      (error 'parse "Syntax error: Not an Expr")]))
+
+  ; tests
+    (test (parse '1) (num 1))
+    (test (parse 'true) (bool true))
+    (test (parse 'false) (bool false))
+    (test (parse '{+ 1 2}) (bin-num-op + (num 1) (num 2)))
+    (test (parse '{+ 1 {+ 2 3}}) (bin-num-op + (num 1) (bin-num-op + (num 2) (num 3))))
+    (test (parse '{- 1 2}) (bin-num-op - (num 1) (num 2)))
+    (test (parse '{- 1 {- 2 3}}) (bin-num-op - (num 1) (bin-num-op - (num 2) (num 3))))
+    (test (parse '{* 1 2}) (bin-num-op * (num 1) (num 2)))
+    (test (parse '{* 1 {* 2 3}}) (bin-num-op * (num 1) (bin-num-op * (num 2) (num 3))))
+    (test (parse '{iszero 0}) (iszero (num 0)))
+    (test (parse '{iszero {+ 1 2}}) (iszero (bin-num-op + (num 1) (num 2))))
+    (test (parse '{bif true 10 20}) (bif (bool true) (num 10) (num 20)))
+    (test (parse '{bif (iszero 10) {+ 1 2} {- 1 2}}) (bif (iszero (num 10)) (bin-num-op + (num 1) (num 2)) (bin-num-op - (num 1) (num 2))))
+    (test (parse 'x) (id 'x))
+    (test (parse '{with {x 2} x}) (with 'x (num 2) (id 'x)))
+    (test (parse '{with {x {+ 1 2}} {+ x 3}}) (with 'x (bin-num-op + (num 1) (num 2)) (bin-num-op + (id 'x) (num 3))))
+    (test (parse '{with {x {with {x 1} {+ x 2}}} {with {y 3} {+ x y}}})
+          (with 'x (with 'x (num 1) (bin-num-op + (id 'x) (num 2))) (with 'y (num 3) (bin-num-op + (id 'x) (id 'y)))))
+    (test (parse '{fun {x : number} : number x})
+          (fun 'x (t-num) (t-num) (id 'x)))
+    (test (parse '{fun {x : number} : boolean {iszero x}})
+          (fun 'x (t-num) (t-bool) (iszero (id 'x))))
+    (test (parse '{f 0}) (app (id 'f) (num 0)))
+    (test (parse '{{f 0} {g 1}}) (app (app (id 'f) (num 0)) (app (id 'g) (num 1))))
+    (test (parse '{fun {f : (number -> number)} : (number -> number)
+                       {fun {y : number} : number {f {+ y 1}}}})
+          (fun 'f (t-fun (t-num) (t-num)) (t-fun (t-num) (t-num))
+               (fun 'y (t-num) (t-num) (app (id 'f) (bin-num-op + (id 'y) (num 1))))))
+    (test (parse 'nempty) (nempty))
+    (test (parse '{ncons 1 nempty}) (ncons (num 1) (nempty)))
+    (test (parse '{ncons {ncons 1 nempty} {ncons 2 {ncons 3 nempty}}}) (ncons (ncons (num 1) (nempty)) (ncons (num 2) (ncons (num 3) (nempty)))))
+    (test (parse '{nempty? nempty}) (isnempty (nempty)))
+    (test (parse '{nempty? (ncons 1 nempty)}) (isnempty (ncons (num 1) (nempty))))
+    (test (parse '{nfirst nempty}) (nfirst (nempty)))
+    (test (parse '{nfirst (ncons 1 nempty)}) (nfirst (ncons (num 1) (nempty))))
+    (test (parse '{nrest nempty}) (nrest (nempty)))
+    (test (parse '{nrest (ncons 1 nempty)}) (nrest (ncons (num 1) (nempty))))
+
+; type-of : Expr -> Type
+; Returns what the type of the given program is,
+;   or throws an error if there are type errors
+; TODO: implement
+(define (type-of e)
+  (error 'type-of "not implemented"))
