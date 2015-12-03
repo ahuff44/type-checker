@@ -233,6 +233,74 @@
 ; type-of : Expr -> Type
 ; Returns what the type of the given program is,
 ;   or throws an error if there are type errors
-; TODO: implement
-(define (type-of e)
-  (error 'type-of "not implemented"))
+; TODO: don't we also need to pass in a type environment?
+(define (type-of expr)
+  (match expr
+    [(num (? number? n))
+      (t-num)]
+    [(num _) (error 'type-of "Type Error: Bad num value")]
+    [(id (? symbol? sym))
+      (error 'type-of "unimplemented")
+      ; TODO: what do we do here? we need a type environment, right?
+      ]
+    [(id _) (error 'type-of "Type Error: Bad id value")]
+    [(bool (? boolean? b))
+      (t-bool)]
+    [(bool _) (error 'type-of "Type Error: Bad bool value")]
+    [(bin-num-op (? procedure? op) (? Expr? lhs) (? Expr? rhs))
+      (unless (and (equal? (type-of lhs) (t-num))
+                   (equal? (type-of rhs) (t-num)))
+        (error 'type-of "Type Error: Non-num binop arguments"))
+        (t-num)]
+    [(iszero (? Expr? expr))
+      (unless (equal? (type-of expr) (t-num))
+        (error 'type-of "Type Error: Non-num iszero argument"))
+      (t-bool)]
+    [(bif (? Expr? bif-test) (? Expr? bif-then) (? Expr? bif-else))
+      (unless (equal? (type-of bif-test) (t-bool))
+        (error 'type-of "Type Error: Non-bool bif condition"))
+      (let ([t-then (type-of bif-then)]
+            [t-else (type-of bif-else)])
+        (unless (equal? t-then t-else)
+          (error 'type-of "Type Error: Non-matching bif branches"))
+        t-then)]
+    [(with (? symbol? bound-id) (? Expr? bound-body) (? Expr? body))
+      (error 'type-of "unimplemented")
+      ; TODO: extend the environment and recurse
+      ]
+    [(fun (? symbol? arg-id) (? Type? arg-type) (? Type? result-type) (? Expr? body))
+      (error 'type-of "unimplemented")
+      ; TODO: extend the environment and recurse
+      ]
+    [(app (? Expr? fun-expr) (? Expr? arg-expr))
+      (match (type-of fun-expr) ; TODO: we need to extend the function's environment to know it's own type and it's parameter's type I think
+        [(t-fun t-input t-output)
+          (unless (equal? (type-of arg-expr) (t-input))
+            (error 'type-of "Type Error: Applying function to bad input type"))
+          t-output]
+        [_
+          (error 'type-of "Type Error: Function doesn't have a function-like type")]) ; TODO: will this error ever be thrown?
+      ]
+    [(nempty)
+      (t-nlist)]
+    [(ncons (? Expr? fst) (? Expr? rst))
+      (unless (equal? (type-of fst) (t-num))
+        (error 'type-of "Type Error: Non-num in cons:first"))
+      (unless (equal? (type-of rst) (t-nlist))
+        (error 'type-of "Type Error: Non-list in cons:rest"))
+      (t-nlist)]
+    [(nfirst (? Expr? expr))
+      (unless (equal? (type-of expr) (t-nlist))
+        (error 'type-of "Type Error: nfirst called on a non-list"))
+      (t-num)]
+    [(nrest (? Expr? expr))
+      (unless (equal? (type-of expr) (t-nlist))
+        (error 'type-of "Type Error: nrest called on a non-list"))
+      (t-nlist)]
+    [(isnempty (? Expr? expr))
+      (unless (equal? (type-of expr) (t-nlist))
+        (error 'type-of "Type Error: nempty? called on a non-list"))
+      (t-bool)]))
+
+  ; tests
+    (test (type-of (bif (iszero (bin-num-op + (num 1) (num 2))) (num 1) (num 0))) (t-num))
