@@ -379,6 +379,13 @@
                             {f {+ y 1}}}})
             (t-fun (t-fun (t-num) (t-num)) (t-fun (t-num) (t-num))))
 
+      (test (run '{{fun {x : number} : number {+ x 3}} 1}) (t-num))
+      (test (run '{with {f {fun {x : number} : number {+ x 3}}} {f 1}}) (t-num))
+      (test (run '{{fun {x : number} : boolean {iszero x}} 1}) (t-bool))
+      (test (run '{with {f {fun {x : number} : boolean {iszero x}}} {f 1}}) (t-bool))
+      (test (run '{{fun {x : number} : nlist {ncons x nempty}} 1}) (t-nlist))
+      (test (run '{with {f {fun {x : number} : nlist {ncons x nempty}}} {f 1}}) (t-nlist))
+
       (test (run 'nempty) (t-nlist))
       (test (run '{ncons 1 nempty}) (t-nlist))
       (test (run '{ncons 1 {ncons 2 {ncons 3 nempty}}}) (t-nlist))
@@ -389,8 +396,15 @@
       (test (run '{nrest nempty}) (t-nlist))
       (test (run '{nrest (ncons 1 nempty)}) (t-nlist))
 
-      ; TODO: complicated passing tests
+      ; type env is preserved
         (test (run '{with {x 1} {with {y 2} {+ x y}}}) (t-num))
+        (test (run '{with {x {fun {x : number} : nlist {ncons x nempty}}}
+                          {with {y {fun {x : nlist} : boolean {nempty? x}}}
+                                {y {x 1}}}}) (t-bool))
+      ; shadowing
+        (test (run '{with {x {fun {x : number} : nlist {ncons x nempty}}}
+                          {with {x {fun {x : nlist} : boolean {nempty? x}}}
+                                {x nempty}}}) (t-bool))
 
     ; errors
       ; id
@@ -447,9 +461,8 @@
         (test/exn (run '{with {x nempty} {x 5}}) "Type Error: Trying to apply a non-function")
 
         (test/exn (run '{{with {x 1} x} 0}) "Type Error: Trying to apply a non-function")
-
-        ; TODO: more complicated 'with' tests
       ; fun
+        (test/exn (run '{fun {x : boolean} : number {+ x 1}}) "Type Error: Non-num binop argument")
         ; constant return values
           (test/exn (run '{fun {x : number} : number true}) "Type Error: Actual and declared function return types don't match")
           (test/exn (run '{fun {x : number} : number nempty}) "Type Error: Actual and declared function return types don't match")
