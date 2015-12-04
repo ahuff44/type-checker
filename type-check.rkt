@@ -303,4 +303,48 @@
       (t-bool)]))
 
   ; tests
+    (define run (compose type-of parse))
+
+    (test (run '1) (t-num))
+    (test (run 'true) (t-bool))
+    (test (run 'false) (t-bool))
+    (test (run '{+ 1 2}) (t-num))
+    (test (run '{+ 1 {+ 2 3}}) (t-num))
+    (test (run '{- 1 2}) (t-num))
+    (test (run '{- 1 {- 2 3}}) (t-num))
+    (test (run '{* 1 2}) (t-num))
+    (test (run '{* 1 {* 2 3}}) (t-num))
+    (test (run '{iszero 0}) (t-bool))
+    (test (run '{iszero {+ 1 2}}) (t-bool))
+    (test (run '{bif true true false}) (t-bool))
+    (test (run '{bif (iszero 10) {+ 1 2} {- 1 2}}) (t-num))
+    ; (test (run 'x) (???)) ; TODO: what's expected here? an error?
+    (test (run '{with {x 2} x}) (t-num))
+    (test (run '{with {x {+ 1 2}} {+ x 3}}) (t-num))
+    (test (run '{with {x {with {x 1} {+ x 2}}} {with {y 3} {+ x y}}}) (t-num))
+    (test (run '{fun {x : number} : number x}) (t-fun (t-num) (t-num)))
+    (test (run '{fun {x : number} : boolean {iszero x}}) (t-fun (t-num) (t-bool)))
+    ; (test (run '{f 0}) (???)) ; TODO: what should this be? an error since it doesn't know f?
+    ; (test (run '{{f 0} {g 1}}) (app (app (id 'f) (num 0)) (???))) ; TODO: what should this be? an error since it doesn't know f?
+    (test (run '{fun {f : (number -> number)} : (number -> number)
+                       {fun {y : number} : number {f {+ y 1}}}})
+          (t-fun (t-fun (t-num) (t-num)) (t-fun (t-num) (t-num))))
+    (test (run 'nempty) (t-nlist))
+    (test (run '{ncons 1 nempty}) (ncons (num 1) (t-nlist)))
+    (test (run '{ncons {ncons 1 nempty} {ncons 2 {ncons 3 nempty}}}) (t-nlist))
+    (test (run '{nempty? nempty}) (n-bool))
+    (test (run '{nempty? (ncons 1 nempty)}) (n-bool))
+    (test (run '{nfirst nempty}) (t-num))
+    (test (run '{nfirst (ncons 1 nempty)}) (t-num))
+    (test (run '{nrest nempty}) (t-nlist))
+    (test (run '{nrest (ncons 1 nempty)}) (t-nlist))
+
+
+
+    ; TODO: error tests
+
+    ; TODO: do we only need to test run, or type-of as well?
+
     (test (type-of (bif (iszero (bin-num-op + (num 1) (num 2))) (num 1) (num 0))) (t-num))
+
+
